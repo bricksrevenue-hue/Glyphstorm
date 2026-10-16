@@ -1,0 +1,73 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { io } from 'socket.io-client';
+import { createGameServer } from '../server/index.mjs';
+const connect=url=>new Promise((resolve,reject)=>{
+  const client=io(url,{transports:['websocket'],reconnection:false,forceNew:true});
+  client.once('connect',()=>resolve(client));client.once('connect_error',reject);
+});
+const call=(client,event,payload)=>new Promise((resolve,reject)=>client.timeout(3000).emit(event,payload,(err,res)=>err?reject(err):resolve(res)));
+test('eight independent clients share a match; room isolation, roles, retry safety, and reconnect hold',{timeout:15000},async t=>{
+  let now=100000;
+  const server=createGameServer({clock:()=>now,testMode:true,words:new Set(['CAT','STAR','PLANET'])});
+  const address=await server.listen();
+  const url='http://127.0.0.1:'+address.port,clients=[];
+  t.after(async()=>{clients.forEach(c=>c.disconnect());await server.close();});
+  for(let i=0;i<10;i++)clients.push(await connect(url));
+  const host=await call(clients[0],'join',{create:true,name:'Pilot 1'});assert.equal(host.ok,true);
+  const joins=[host];for(let i=1;i<8;i++)joins.push(await call(clients[i],'join',{code:host.code,name:'Pilot '+(i+1)}));
+  assert.ok(joins.every(r=>r.ok));
+  const other=await call(clients[8],'join',{create:true,name:'Other room'});assert.notEqual(other.code,host.code);
+  const room=server.rooms.get(host.code),send=(i,type,payload={},requestId=crypto.randomUUID())=>call(clients[i],'action',{requestId,matchId:room.matchId,type,payload});
+  const forbidden=await send(1,'settings',{mode:'teams',minutes:5,disruption:true});assert.equal(forbidden.ok,false);
+  for(let i=0;i<8;i++)assert.equal((await send(i,'ready',{ready:true})).ok,true);
+  assert.equal((await send(0,'start')).ok,true);now+=3100;server.tick();
+  const spectator=await call(clients[9],'join',{code:host.code,name:'Spectator'});assert.equal(spectator.ok,true);
+  assert.equal(room.players.get(spectator.playerId).role,'spectator');
+  assert.equal((await send(9,'wordMode',{enter:true})).ok,false);
+  const observations=Array(8).fill(null);
+  for(let i=0;i<8;i++)clients[i].on('state',s=>observations[i]=s);
+  const p=room.players.get(host.playerId);p.tray=[{id:'a',letter:'C'},{id:'b',letter:'A'},{id:'c',letter:'T'}];
+  const requestId=crypto.randomUUID();
+  assert.equal((await send(0,'wordMode',{enter:true})).ok,true);
+  const scored=await send(0,'submit',{tileIds:['a','b','c']},requestId);assert.equal(scored.value.points,5);
+  assert.equal((await send(0,'submit',{tileIds:['a','b','c']},requestId)).value.points,5);assert.equal(p.score,5);
+  now+=100;server.tick();
+  await new Promise(resolve=>setTimeout(resolve,100));
+  for(let i=0;i<8;i++){
+    assert.equal(observations[i].players.find(p=>p.id===host.playerId).score,5);
+    assert.equal(observations[i].code,host.code);assert.equal(observations[i].endAt,room.endAt);
+    assert.equal(observations[i].self.id,joins[i].playerId);
+  }
+  assert.equal(server.rooms.get(other.code).phase,'lobby');
+  const oldToken=joins[1].token,id=joins[1].playerId;clients[1].disconnect();
+  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(room.players.get(id).connected,false);
+  const replacement=await connect(url);clients.push(replacement);
+  const resumed=await call(replacement,'resume',{token:oldToken});assert.equal(resumed.ok,true);assert.equal(resumed.playerId,id);
+  assert.equal((await call(clients[9],'action',{requestId:crypto.randomUUID(),matchId:room.matchId,type:'submit',payload:{tileIds:['a','b','c']}})).ok,false);
+  now=room.endAt;server.tick();
+  assert.equal(room.phase,'results');assert.deepEqual(room.results.winners,[host.playerId]);
+  assert.equal((await send(0,'submit',{tileIds:[]})).ok,false);
+  assert.equal((await send(0,'lobby')).ok,true);
+  assert.equal(room.phase,'lobby');assert.equal(p.score,0);assert.equal(p.used.size,0);
+  assert.equal((await send(9,'claim')).ok,false); // all eight active seats are retained
+  const health=await fetch(url+'/health');assert.equal(health.status,200);assert.equal((await health.json()).status,'ok');
+  const html=await fetch(url);assert.equal(html.status,200);assert.match(await html.text(),/OUTSPELL/);
+  const dict=await fetch(url+'/api/dictionary');assert.equal((await dict.json()).entries,3);
+  const script=await fetch(url+'/socket.io/socket.io.js');assert.equal(script.status,200);
+});
+test('a long-running room survives a simultaneous brief disconnect',{timeout:8000},async t=>{
+  let now=100000;
+  const server=createGameServer({clock:()=>now,testMode:true,words:new Set(['CAT'])});
+  const address=await server.listen(),url='http://127.0.0.1:'+address.port,clients=[];
+  t.after(async()=>{clients.forEach(c=>c.disconnect());await server.close();});
+  const a=await connect(url),b=await connect(url);clients.push(a,b);
+  const join=await call(a,'join',{create:true,name:'Alpha'});
+  await call(b,'join',{code:join.code,name:'Beta'});
+  now+=120000;a.disconnect();b.disconnect();
+  await new Promise(resolve=>setTimeout(resolve,30));server.tick();
+  assert.ok(server.rooms.has(join.code));
+  now+=1000;const replacement=await connect(url);clients.push(replacement);
+  const resumed=await call(replacement,'resume',{token:join.token});
+  assert.equal(resumed.ok,true);
+});

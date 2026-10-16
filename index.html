@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#080d19">
+  <meta name="description" content="Open crystals. Collect letters. Outspell the galaxy. A multiplayer word arena for 2–8 friends.">
+  <title>Glyphstorm — Outspell the galaxy</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <canvas id="space" aria-hidden="true"></canvas>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Glyphstorm home"><span class="brand-mark">G</span><span>GLYPHSTORM<span class="brand-sub">THE WORD ARENA</span></span></a>
+    <div class="top-actions">
+      <span id="connection" class="status"><i></i>Connecting</span>
+      <button id="helpButton" class="text-button">How to play</button>
+      <button id="soundButton" class="icon-button" aria-label="Enable sound" title="Enable sound">♪ <span>Off</span></button>
+      <button id="motionButton" class="icon-button" aria-label="Enable reduced motion" title="Reduce motion">◌</button>
+    </div>
+  </header>
+  <main>
+    <section id="home" class="home view">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="spark"></span> 2–8 PLAYERS · ONE SHARED UNIVERSE</div>
+        <h1>OUTSPELL<br>THE <em>GALAXY.</em></h1>
+        <p class="hero-description">A little cosmic chaos.<br>A lot of clever words.</p>
+        <p class="hero-detail">Open glowing crystals. Gather their letters.<br>Turn your next great word into the winning move.</p>
+        <div class="hero-tags"><span>✦ Live multiplayer</span><span>⌁ Phones & laptops</span><span>↗ No sign-up</span></div>
+      </div>
+      <div class="entry-card panel">
+        <div class="card-kicker">YOUR NEXT ROUND STARTS HERE</div>
+        <h2>Ready, word pilot?</h2>
+        <label for="pilotName">PILOT NAME</label>
+        <input id="pilotName" maxlength="18" autocomplete="nickname" placeholder="What should we call you?" aria-describedby="nameHint">
+        <small id="nameHint">A friendly name. No account needed.</small>
+        <button id="createButton" class="button primary">Create a room <span>↗</span></button>
+        <div class="divider"><span>or join your crew</span></div>
+        <label for="roomCode">ROOM CODE</label>
+        <div class="join-row"><input id="roomCode" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC123"><button id="joinButton" class="button secondary">Join →</button></div>
+        <p id="homeError" class="error" role="alert"></p>
+        <div class="entry-footer"><span class="tiny-orbit"></span> Your friends. Your room. Your rules.</div>
+      </div>
+      <div class="loop-strip">
+        <div><b>01</b><span><strong>OPEN</strong>Pulse a crystal</span></div>
+        <div><b>02</b><span><strong>COLLECT</strong>Fill your letter tray</span></div>
+        <div><b>03</b><span><strong>OUTSPELL</strong>Build words. Earn points.</span></div>
+      </div>
+      <p class="home-bottom">WORDS ARE YOUR SUPERPOWER <span>✦</span> GLYPHSTORM / 01</p>
+    </section>
+
+    <section id="lobby" class="view lobby hidden">
+      <div class="section-heading"><div><div class="eyebrow">FLIGHT DECK</div><h1>Your crew is assembling.</h1><p>Invite a friend, choose your rules, and ready up.</p></div><button class="text-button leave-button">Leave room ↗</button></div>
+      <div class="lobby-grid">
+        <div class="panel crew-panel">
+          <div class="room-banner"><div><span class="label">ROOM CODE</span><strong id="lobbyCode"></strong></div><div><button id="copyCode" class="button small secondary">Copy code</button><button id="copyLink" class="text-button">Copy invite link ↗</button></div></div>
+          <div class="panel-title"><h2>The crew</h2><span id="playerCount" class="badge"></span></div>
+          <div id="roster"></div>
+          <div id="spectatorList" class="muted"></div>
+          <div id="teamActions" class="team-actions hidden"><span>YOUR TEAM</span><button id="team0" class="button small secondary">Aurora</button><button id="team1" class="button small secondary">Nebula</button></div>
+          <div class="lobby-bottom"><button id="readyButton" class="button primary">Ready up ✓</button><button id="claimButton" class="button primary hidden">Claim a pilot seat</button><button id="startButton" class="button secondary hidden">Launch round →</button></div>
+          <p id="lobbyHint" class="muted"></p>
+        </div>
+        <div class="lobby-side">
+          <div class="panel settings-panel"><div class="panel-title"><h2>Round settings</h2><span id="hostBadge" class="badge">HOST CONTROLS</span></div>
+            <label for="modeSelect">GAME MODE</label><select id="modeSelect"><option value="ffa">Free-for-all</option><option value="teams">Two teams</option></select>
+            <label for="durationSelect">ROUND LENGTH</label><select id="durationSelect"><option value="3">3 minutes · quick orbit</option><option value="5" selected>5 minutes · classic</option><option value="7">7 minutes · deep space</option></select>
+            <label class="toggle-line" for="disruptionToggle"><span><strong>Player disruption</strong><small>Rival pulses can reset your ship.<br>Friendly fire is always off.</small></span><input type="checkbox" id="disruptionToggle"></label>
+          </div>
+          <div class="panel flight-manual"><div class="eyebrow">A 20-SECOND FLIGHT BRIEF</div><p><kbd>W A S D</kbd> / arrows to fly.<br>Mouse to aim. Hold to pulse.<br><kbd>Space</kbd> to build a word.</p><p>On touchscreens, use the two sticks and tap <strong>Build a word</strong>.</p><p class="mint">Only words earn points.<br>Longer words. Bigger possibilities.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="game" class="view game hidden">
+      <div class="game-top"><div><span id="gameMode" class="badge"></span><span id="gameRoom" class="muted"></span></div><div id="clock" class="clock">5:00</div><button class="text-button leave-button">Leave ↗</button></div>
+      <div id="arenaWrap" class="arena-wrap">
+        <canvas id="arena" aria-label="Shared space arena. Fly using WASD or arrow keys. Aim with the mouse. Press Space to build words."></canvas>
+        <div id="scoreboard" class="scoreboard"></div>
+        <canvas id="minimap" width="180" height="120" aria-label="Arena minimap"></canvas>
+        <div class="arena-caption"><span class="live-dot"></span> SHARED ORBIT <span id="latency"></span></div>
+        <div id="phaseOverlay" class="phase-overlay hidden"><span id="overlayLabel"></span><strong id="overlayValue"></strong><p id="overlayHint"></p></div>
+        <div id="spectatorBar" class="spectator-bar hidden"><span>WATCHING THIS ROUND</span><select id="followSelect" aria-label="Choose pilot to follow"></select><small>A pilot seat can be claimed in the next lobby.</small></div>
+        <div id="leftStick" class="touch-stick left" aria-label="Movement control"><span></span><b>MOVE</b></div>
+        <div id="rightStick" class="touch-stick right" aria-label="Aim and pulse control"><span></span><b>AIM / PULSE</b></div>
+        <div id="connectionOverlay" class="connection-overlay hidden"><strong>Reconnecting to your orbit…</strong><span>Your seat is reserved for up to 30 seconds. The round continues.</span></div>
+      </div>
+      <div id="trayDock" class="tray-dock">
+        <div class="tray-header"><div><span class="label">YOUR LETTERS</span><span id="trayCount" class="badge">0 / 10</span></div><div><span id="stability" class="stability"></span><span id="shieldStatus" class="muted"></span></div></div>
+        <div class="tray-main"><div id="tray" class="tray"></div><div class="tray-actions"><button id="buildButton" class="button primary">Build a word <kbd>Space</kbd></button><button id="discardButton" class="text-button">Discard a letter</button></div></div>
+        <div class="tray-footer"><span id="trayHint">Open crystals, then fly close to collect their letters.</span><span id="lastWord"></span></div>
+      </div>
+      <div id="wordPanel" class="word-panel panel hidden" aria-label="Word builder">
+        <div class="panel-title"><div><div class="eyebrow">MAKE YOUR NEXT MOVE</div><h2>Build a word.</h2></div><button id="closeWord" class="icon-button" aria-label="Close word builder">×</button></div>
+        <p id="wordProtection"></p>
+        <div id="wordLetters" class="word-letters" aria-live="polite"></div>
+        <div class="word-tools"><span id="wordScore">3–10 letters</span><button id="backspaceButton" class="text-button">⌫ Backspace</button><button id="clearWord" class="text-button">Clear</button></div>
+        <button id="submitButton" class="button primary">Submit word <kbd>Enter</kbd></button>
+        <p id="wordError" class="error" role="alert"></p>
+        <small>Select your tray letters below or type on a keyboard.<br>Unused letters stay with you. Each word scores once per pilot.</small>
+      </div>
+    </section>
+
+    <section id="results" class="view results hidden">
+      <div class="eyebrow">ORBIT COMPLETE</div><h1 id="winnerTitle">A stellar round.</h1><p id="winnerSubtitle" class="muted"></p>
+      <div class="panel results-panel"><div class="panel-title"><h2>Final standings</h2><span id="resultsMode" class="badge"></span></div><div id="resultsTable"></div></div>
+      <div class="panel result-words"><div class="panel-title"><h2>Your word constellation</h2><span id="resultWordCount" class="badge"></span></div><div id="resultWords"></div></div>
+      <div class="result-actions"><button id="rematchButton" class="button primary">Back to lobby ↗</button><span id="rematchHint" class="muted"></span><button class="text-button leave-button">Leave room</button></div>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <dialog id="helpDialog"><button id="closeHelp" class="icon-button close-dialog" aria-label="Close help">×</button><div class="eyebrow">FLIGHT MANUAL</div><h2>Small crystals.<br>Big word energy.</h2>
+    <ol><li><strong>Open & collect.</strong> Aim light pulses at crystals. Fly close to pick up the letters. The opener and their teammates get a 2-second collection priority.</li><li><strong>Build & score.</strong> Carry up to 10 letters. Make a 3–10 letter English word. Only used letters leave your tray. Rare letters and longer words score more.</li><li><strong>Find your moment.</strong> Build mode stops your ship and gives up to 8 seconds of protection. Submitting, canceling, or timing out ends it; the cooldown is 15 seconds. You cannot collect or pulse while protected.</li><li><strong>Outspell your crew.</strong> Highest score when the clock ends wins. A word scores once per player per match. Teams add their players' points. Ties share the win.</li></ol>
+    <div class="help-note"><strong>Disruption, when enabled</strong><p>Three rival pulse contacts reset your ship for 3 seconds and drop up to 3 letters. Points stay. Dropped letters are immediately shared. Your ship returns with brief protection. Friendly fire is off.</p></div>
+    <p><strong>Controls:</strong> WASD/arrows + mouse on computers. Two touch sticks on phones. Space opens word building; Enter submits; Escape closes it.</p>
+    <p class="muted">The game uses a bundled English dictionary with an offensive-word filter. Proper names and abbreviations are not intended; dictionary coverage may be imperfect. New players arriving mid-round watch until the next lobby.</p>
+    <p class="muted">Score = letter values + 2 × (word length − 3)². <a href="/credits.html">Dictionary & software credits ↗</a></p>
+  </dialog>
+</body>
+</html>
