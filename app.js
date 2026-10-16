@@ -1,7 +1,7 @@
 import { Arena, SpaceBackdrop } from './arena.js';
 import { VALUES, RULES, TEAMS, TEAM_COLORS, scoreWord } from './rules.js';
 const $=id=>document.getElementById(id);
-const show=(id,on)=>$(id).classList.toggle('hidden',!on);
+const socket = io('https://onrender.com');
 const storage={get(key,local=false){try{return (local?localStorage:sessionStorage).getItem(key);}catch{return null;}},
   set(key,value,local=false){try{(local?localStorage:sessionStorage).setItem(key,value);}catch{}},
   remove(key){try{sessionStorage.removeItem(key);}catch{}}};
